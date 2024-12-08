@@ -36,13 +36,8 @@ def rate_limiter():
     request_counts[ip].append(current_time)
     return True
 
-# NOT_MY_KEY_var = base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8')
-# print(key)
-
-# In-memory key storage (in production, use a secure key management system)
 keys = {}
 folder_path = "C:\\Users\\salma\\Downloads\\CSCE3550_Windows_x86_64 (1)"
-# folder_path = r"C:\Users\salma\OneDrive - UNT System\Documents\project1\py3"
 database_name = "totally_not_my_privateKeys.db"# Specify the absolute path to your database file
 db_path = os.path.abspath(f"{folder_path}/{database_name}")
 
@@ -152,7 +147,6 @@ def generate_key_pair(expiry_days=30):
    
     exp = datetime.now(timezone.utc) + timedelta(days=expiry_days)
     exp_int = int(exp.timestamp())
-    # exp_int = int(exp)
     
     private_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -165,13 +159,12 @@ def generate_key_pair(expiry_days=30):
     )
     
     
-    # kid = str(kid)
+
     encrypted_private_key = encrypt_private_key(private_pem)
 
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
   
-    # c.execute("INSERT INTO keys (kid, key, exp) VALUES (?, ?, ?)", (kid, private_pem, exp_int))
     c.execute("INSERT INTO keys (key, exp) VALUES (?, ?)", (encrypted_private_key, exp_int))
     conn.commit()
     kid = c.lastrowid
@@ -201,9 +194,6 @@ def int_to_base64(value):
     value_bytes = bytes.fromhex(value_hex)
     return jwt.utils.base64url_encode(value_bytes).decode('ascii')
 
-# Generate initial keys
-# current_kid = generate_key_pair()
-# expired_kid = generate_key_pair(-30)  # Generate an expired key
 
 @app.route('/.well-known/jwks.json', methods=['GET'])
 def jwks():
@@ -212,15 +202,7 @@ def jwks():
         "keys": [private_key_to_jwk(kid, private_key) for kid, private_key, _ in valid_keys]
     }
     return jsonify(jwks)
-    # current_time = datetime.now(timezone.utc)
-    # unexpired_keys = []
 
-    # for kid, key_data in keys.items():
-    #     if key_data['exp'] > current_time:
-    #         jwk = get_jwk(kid)  # Assuming you have a get_jwk function
-    #         unexpired_keys.append(jwk)
-
-    # return jsonify({"keys": unexpired_keys})
 
 @app.route('/auth', methods=['POST'])
 def authenticate():
@@ -263,18 +245,9 @@ def authenticate():
     conn.commit()
     conn.close()
 
-    # Use parameterized query for insertion
-    # conn = get_db_connection()
-    # conn = sqlite3.connect(db_path)
-    # c = conn.cursor()
-    # c.execute("INSERT INTO auth_logs (username, token, exp) VALUES (?, ?, ?)", 
-    #           (username, token, exp))
-    # conn.commit()
-    # conn.close()
 
     return jsonify({
         "token": token,
-        # "expires": payload['exp'].isoformat(),
         "expires": payload['exp'],
         "used_expired_key": use_expired
     })
@@ -282,7 +255,6 @@ def authenticate():
 def load_keys():
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
-    # c.execute("SELECT kid, private_key, public_key, exp FROM keys")
     c.execute("SELECT kid, key, exp FROM keys")
     rows = c.fetchall()
     conn.close()
@@ -295,15 +267,6 @@ def load_keys():
             "public_key": private_key.public_key(),
             "exp": datetime.fromtimestamp(exp, tz=timezone.utc)
         }
-        # kid, private_pem, public_pem, exp_str = row
-        # private_key = serialization.load_pem_private_key(private_pem, password=None)
-        # public_key = serialization.load_pem_public_key(public_pem)
-        # exp = datetime.fromisoformat(exp_str)
-        # keys[kid] = {
-        #     "private_key": private_key,
-        #     "public_key": public_key,
-        #     "exp": exp
-        # }
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -336,38 +299,9 @@ def register():
         conn.close()
         return jsonify({"error": str(e)}), 500
 
-# if __name__ == '__main__':
-    # init_db()
-    
-    #  # Check if we have valid and expired keys
-    # valid_kid, _, _ = get_key_from_db(expired=False)
-    # expired_kid, _, _ = get_key_from_db(expired=True)
-    
-    # if not valid_kid:
-    #     generate_key_pair(30)  # Generate a valid key (30 days expiry)
-    #     print(f"not valid key")
-    # if not expired_kid:
-    #     generate_key_pair(-30)  # Generate an expired key (30 days in the past)
-    #     print(f"valid key")
-    # app.run(host='0.0.0.0', port=8080)
-
 if __name__ == '__main__':
     init_db(True)
     
-    # Test AES encryption of private keys
-    # private_key = rsa.generate_private_key(
-    #     public_exponent=65537,
-    #     key_size=2048
-    # )
-    # private_pem = private_key.private_bytes(
-    #     encoding=serialization.Encoding.PEM,
-    #     format=serialization.PrivateFormat.PKCS8,
-    #     encryption_algorithm=serialization.NoEncryption()
-    # )
-    # encrypted_private_key = encrypt_private_key(private_pem)
-    # decrypted_private_key = decrypt_private_key(encrypted_private_key)
-    # print("AES Encryption Test:", private_pem == decrypted_private_key)
-
      # Test AES encryption of private keys
     test_kid = generate_key_pair(30)
     kid, private_key, exp = get_key_from_db()
@@ -380,15 +314,6 @@ if __name__ == '__main__':
         print(f"Private key successfully decrypted: {private_key is not None}")
     else:
         print("Failed to generate or retrieve encrypted key")
-    # kid = generate_key_pair(30)
-    # retrieved_kid, encrypted_private_key, exp = get_key_from_db()
-    # print(f"type: {type(encrypted_private_key)}")
-    # if retrieved_kid and encrypted_private_key:
-    #     decrypted_private_key = decrypt_private_key(encrypted_private_key)
-    #     print("AES Encryption Test:", isinstance(decrypted_private_key, bytes))
-    #     print(f"Generated and retrieved key with ID: {retrieved_kid}")
-    # else:
-    #     print("Failed to generate or retrieve encrypted key")
 
     # Test user registration
     with app.test_client() as client:
