@@ -21,6 +21,13 @@ WINDOW_SIZE = 1   # in seconds
 # Dictionary to track request timestamps for each IP
 request_counts = defaultdict(list)
 
+keys = {}
+
+
+folder_path = "data"
+database_name = "totally_not_my_privateKeys.db"# Specify the absolute path to your database file
+db_path = os.path.join(os.path.dirname(__file__), folder_path, database_name)
+
 def rate_limiter():
     ip = request.remote_addr
     current_time = time.time()
@@ -36,16 +43,6 @@ def rate_limiter():
     request_counts[ip].append(current_time)
     return True
 
-keys = {}
-folder_path = "C:\\Users\\salma\\Downloads\\CSCE3550_Windows_x86_64 (1)"
-database_name = "totally_not_my_privateKeys.db"# Specify the absolute path to your database file
-db_path = os.path.abspath(f"{folder_path}/{database_name}")
-
-def adapt_datetime(dt):
-    return dt.isoformat()
-
-def convert_datetime(s):
-    return datetime.fromisoformat(s.decode('utf-8'))
 
 def get_encryption_key():
     key = os.environ.get('NOT_MY_KEY')
@@ -100,8 +97,8 @@ def get_key_from_db(expired=False):
     if expired:
         c.execute("SELECT kid, key, exp FROM keys WHERE exp < ? ORDER BY exp DESC LIMIT 1", (current_time,))
     else:
-        c.execute("SELECT kid, key, exp FROM keys WHERE exp > ? ORDER BY exp ASC LIMIT 1", (current_time,))
-    
+        # c.execute("SELECT kid, key, exp FROM keys WHERE exp > ? ORDER BY exp ASC LIMIT 1", (current_time,))
+        c.execute("SELECT kid, key, exp FROM keys WHERE exp > ? ORDER BY kid DESC LIMIT 1", (current_time,))
     row = c.fetchone()
     conn.close()
     
@@ -157,8 +154,6 @@ def generate_key_pair(expiry_days=30):
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
-    
-    
 
     encrypted_private_key = encrypt_private_key(private_pem)
 
@@ -173,19 +168,7 @@ def generate_key_pair(expiry_days=30):
     
     return kid
 
-def get_jwk(kid):
-    key_data = keys[kid]
-    public_key = key_data['public_key']
-    numbers = public_key.public_numbers()
-    return {
-        "kid": str(kid),
-        "kty": "RSA",
-        "alg": "RS256",
-        "use": "sig",
-        "n": int_to_base64(numbers.n), #modulus
-        "e": int_to_base64(numbers.e), #exponent
-        "exp": int(key_data['exp'].timestamp())
-    }
+
 
 def int_to_base64(value):
     value_hex = format(value, 'x')
@@ -252,21 +235,6 @@ def authenticate():
         "used_expired_key": use_expired
     })
 
-def load_keys():
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute("SELECT kid, key, exp FROM keys")
-    rows = c.fetchall()
-    conn.close()
-
-    for row in rows:
-        kid, key_bytes, exp = row
-        private_key = serialization.load_pem_private_key(key_bytes, password=None)
-        keys[kid] = {
-            "private_key": private_key,
-            "public_key": private_key.public_key(),
-            "exp": datetime.fromtimestamp(exp, tz=timezone.utc)
-        }
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -300,53 +268,4 @@ def register():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    init_db(True)
-    
-     # Test AES encryption of private keys
-    test_kid = generate_key_pair(30)
-    kid, private_key, exp = get_key_from_db()
-    
-    if kid and private_key:
-        print("AES Encryption Test:")
-        print(f"Generated key with ID: {test_kid}")
-        print(f"Retrieved key with ID: {kid}")
-        print(f"Keys match: {test_kid == kid}")
-        print(f"Private key successfully decrypted: {private_key is not None}")
-    else:
-        print("Failed to generate or retrieve encrypted key")
-
-    # Test user registration
-    with app.test_client() as client:
-        test_user_name = "uwu_user8"
-        test_email = "uwu8@example.com"
-
-        response = client.post('/register', json={
-            "username": test_user_name,
-            "email": test_email
-        })
-        print("User Registration Test:", response.status_code == 201)
-        print(f"response status code: { response.status_code }")
-        print("Generated Password:", response.get_json().get("password"))
-
-        
-        # Test authentication logging
-        auth_response = client.post('/auth', json={
-            "username": f"{test_user_name}"
-        })
-        print(f"auth status code: {auth_response.status_code }")
-        print("Authentication Test:", auth_response.status_code == 200)
-
-        # Verify auth log
-        conn = sqlite3.connect(db_path)
-        c = conn.cursor()
-        c.execute("SELECT * FROM auth_logs WHERE user_id = (SELECT id FROM users WHERE username = ?)", (test_user_name,))
-        log_entry = c.fetchone()
-        conn.close()
-
-        print("Auth Log Test:", log_entry is not None)
-        if log_entry:
-            print("Log Entry:", log_entry)
-
-
-    app.run(host='0.0.0.0', port=8080)   
-    
+    app.run(host='0.0.0.0', port=8080)  
